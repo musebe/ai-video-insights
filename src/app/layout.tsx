@@ -1,14 +1,16 @@
 // app/layout.tsx
-import '@/styles/globals.css';
+
+import './globals.css';
 import { ReactNode } from 'react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { Toaster } from 'sonner';
-
-import Header from '@/components/layout/Header';
-import Sidebar from '@/components/layout/Sidebar';
-import SettingsDrawer from '@/components/layout/SettingsDrawer';
-
-const queryClient = new QueryClient();
+import { Header } from '@/components/layout/Header';
+import { Sidebar } from '@/components/layout/Sidebar';
+import { SettingsPanel } from '@/components/layout/SettingsPanel'; // <-- Using the new panel
+import { Providers } from '@/components/Providers';
+import {
+  ResizableHandle,
+  ResizablePanel,
+  ResizablePanelGroup,
+} from '@/components/ui/resizable';
 
 export const metadata = {
   title: 'AI Video Insights',
@@ -17,17 +19,38 @@ export const metadata = {
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang='en'>
-      <body className='flex h-screen bg-gray-50 dark:bg-gray-900'>
-        <QueryClientProvider client={queryClient}>
-          <Header />
-          <div className='flex flex-1 overflow-hidden'>
-            <Sidebar />
-            <main className='flex-1 overflow-y-auto p-4'>{children}</main>
-          </div>
-          <SettingsDrawer />
-          <Toaster />
-        </QueryClientProvider>
+    <html lang='en' className='dark'>
+      <body className='bg-background text-foreground'>
+        <Providers>
+          <ResizablePanelGroup
+            direction='horizontal'
+            className='min-h-screen w-full'
+          >
+            {/* Panel 1: Sidebar */}
+            <ResizablePanel
+              defaultSize={20}
+              maxSize={25}
+              minSize={15}
+              className='hidden lg:block'
+            >
+              <Sidebar />
+            </ResizablePanel>
+            <ResizableHandle withHandle className='hidden lg:flex' />
+
+            {/* Panel 2: Main Content */}
+            <ResizablePanel defaultSize={80}>
+              <div className='flex flex-col h-full'>
+                <Header />
+                <main className='flex-1 overflow-y-auto bg-muted/40 p-4 md:p-8'>
+                  {children}
+                </main>
+              </div>
+            </ResizablePanel>
+
+            {/* Panel 3: Settings (Collapsible) */}
+            <SettingsPanel />
+          </ResizablePanelGroup>
+        </Providers>
       </body>
     </html>
   );
