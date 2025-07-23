@@ -1,3 +1,5 @@
+// src/components/video/VideoUploadArea.tsx
+
 'use client';
 
 import { useState } from 'react';
@@ -15,11 +17,11 @@ import {
 } from '@/components/ui/select';
 import type { Folder, Video } from '@prisma/client';
 
-// Updated typings to include the version number
+// Cloudinary widget typings
 interface CloudinaryUploadWidgetInfo {
   public_id: string;
   secure_url: string;
-  version: number; // The version is crucial for correct URL construction
+  version: number;
   eager?: Array<{ secure_url: string }>;
   original_filename?: string;
 }
@@ -30,6 +32,8 @@ interface CloudinaryUploadWidgetResult {
 interface CloudinaryUploadWidget {
   open: () => void;
 }
+
+// Merge with Cloudinary’s own Window.cloudinary type
 declare global {
   interface Window {
     cloudinary: {
@@ -40,6 +44,11 @@ declare global {
           result: CloudinaryUploadWidgetResult | null
         ) => void
       ) => CloudinaryUploadWidget;
+      // Avoid `any` by using `unknown`
+      videoPlayer: (
+        element: HTMLVideoElement,
+        options: Record<string, unknown>
+      ) => unknown;
     };
   }
 }
@@ -101,6 +110,8 @@ export function VideoUploadArea() {
       {
         cloudName: process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME,
         uploadPreset: 'ai_video_final',
+        resourceType: 'video',
+        clientAllowedFormats: ['mp4', 'mov', 'webm', 'ogg'],
         folder: `ai-videos/${folderName}`,
         sources: ['local', 'camera'],
         multiple: false,
@@ -114,20 +125,16 @@ export function VideoUploadArea() {
           const info = result.info;
           const subtitledUrl = info.eager?.[0]?.secure_url || null;
 
-          // --- THE FIX: Construct the correct URLs based on your findings ---
+          // --- Construct raw transcript URLs based on the returned secure_url ---
           const videoUrl = info.secure_url;
-
-          // Replace '/video/upload/' with '/raw/upload/'
           const baseUrl = videoUrl.replace('/video/upload/', '/raw/upload/');
-
-          // Change the file extension
           const srtUrl = baseUrl.replace(/\.mp4$/, '.srt');
           const vttUrl = baseUrl.replace(/\.mp4$/, '.vtt');
-          // -----------------------------------------------------------------
+          // -----------------------------------------------------------------------
 
           console.log('[UPLOAD COMPLETE]');
-          console.log(` • SRT URL (Constructed): ${srtUrl}`);
-          console.log(` • VTT URL (Constructed): ${vttUrl}`);
+          console.log(` • SRT URL: ${srtUrl}`);
+          console.log(` • VTT URL: ${vttUrl}`);
 
           saveVideoMutation.mutate({
             title: info.original_filename || 'Untitled Video',
@@ -166,7 +173,7 @@ export function VideoUploadArea() {
         </Select>
         <Button
           onClick={openUploadWidget}
-          disabled={!selectedFolder || saveVideoMutation.isPending}
+          disabled={!selectedFolder || saveVideoMutation.status === 'pending'}
           className='w-full'
         >
           2. Open Upload Widget
