@@ -6,23 +6,31 @@ import { VideoPlayer } from '@/components/video/VideoPlayer';
 import { InsightsPanel } from '@/components/insights/InsightsPanel';
 
 export default async function VideoPage({
-  params, // ← Next will give you this
+  params,
 }: {
-  params: { videoId: string };
+  params: Promise<{ videoId: string }>;
 }) {
-  const { videoId } = params;
+  // Wait on the params promise to extract the dynamic segment
+  const { videoId } = await params;
 
+  // Fetch the video record from your database
   const video = await prisma.video.findUnique({
     where: { id: videoId },
   });
 
-  if (!video) notFound();
+  // If no matching video, render the Next.js 404 page
+  if (!video) {
+    notFound();
+  }
 
   return (
     <div className='grid grid-cols-1 lg:grid-cols-5 gap-8 h-full'>
+      {/* Left Column: Video Player */}
       <div className='lg:col-span-3'>
         <VideoPlayer video={video} />
       </div>
+
+      {/* Right Column: Insights Panel */}
       <div className='lg:col-span-2'>
         <InsightsPanel video={video} />
       </div>
