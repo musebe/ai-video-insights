@@ -1,4 +1,4 @@
-// components/layout/SettingsPanel.tsx
+// /components/layout/SettingsPanel.tsx
 
 'use client';
 
@@ -17,11 +17,17 @@ import { Switch } from '@/components/ui/switch';
 import { useUIStore } from '@/lib/use-ui-store';
 import { Separator } from '@/components/ui/separator';
 import { X } from 'lucide-react';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
 export function SettingsPanel() {
   const store = useUIStore();
 
-  // Don't render anything if the panel is closed. This is key for the collapsible behavior.
   if (!store.isSettingsOpen) {
     return null;
   }
@@ -88,11 +94,62 @@ export function SettingsPanel() {
                 </div>
               </CardContent>
             </Card>
-            {/* You can add more settings cards here for other options */}
+
+            {/* --- NEW: Subtitle Styling Card --- */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Subtitle Styling</CardTitle>
+                <CardDescription>
+                  Customize the appearance of burned-in subtitles.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className='space-y-4'>
+                <div className='grid grid-cols-2 gap-4'>
+                  <div className='space-y-2'>
+                    <Label htmlFor='subtitle-color'>Text Color</Label>
+                    <Input
+                      id='subtitle-color'
+                      type='color'
+                      value={store.subtitleColor}
+                      onChange={(e) => store.setSubtitleColor(e.target.value)}
+                    />
+                  </div>
+                  <div className='space-y-2'>
+                    <Label htmlFor='subtitle-bg-color'>Background Color</Label>
+                    <Input
+                      id='subtitle-bg-color'
+                      type='color'
+                      value={store.subtitleBackgroundColor}
+                      onChange={(e) =>
+                        store.setSubtitleBackgroundColor(e.target.value)
+                      }
+                    />
+                  </div>
+                </div>
+                <div className='space-y-2'>
+                  <Label htmlFor='subtitle-font'>Font Family</Label>
+                  <Select
+                    value={store.subtitleFont}
+                    onValueChange={store.setSubtitleFont}
+                  >
+                    <SelectTrigger id='subtitle-font'>
+                      <SelectValue placeholder='Select a font' />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value='arial'>Arial</SelectItem>
+                      <SelectItem value='times'>Times New Roman</SelectItem>
+                      <SelectItem value='courier'>Courier New</SelectItem>
+                      <SelectItem value='roboto'>Roboto</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </CardContent>
+            </Card>
+            {/* ---------------------------------- */}
           </div>
           <div className='mt-auto border-t pt-4'>
             <Button className='w-full' onClick={store.closeSettings}>
-              Save Changes
+              Close Settings
             </Button>
           </div>
         </div>

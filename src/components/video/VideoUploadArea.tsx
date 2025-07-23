@@ -1,66 +1,147 @@
-// components/video/VideoUploadArea.tsx
-
 'use client';
 
 import { useState } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { UploadCloud, FileVideo, X } from 'lucide-react';
-import { toast } from 'sonner'; // <-- IMPORT a toast function directly from sonner
+import { UploadCloud } from 'lucide-react';
+import { toast } from 'sonner';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import type { Folder, Video } from '@prisma/client';
+
+// Updated typings to include the version number
+interface CloudinaryUploadWidgetInfo {
+  public_id: string;
+  secure_url: string;
+  version: number; // The version is crucial for correct URL construction
+  eager?: Array<{ secure_url: string }>;
+  original_filename?: string;
+}
+interface CloudinaryUploadWidgetResult {
+  event: 'success';
+  info: CloudinaryUploadWidgetInfo;
+}
+interface CloudinaryUploadWidget {
+  open: () => void;
+}
+declare global {
+  interface Window {
+    cloudinary: {
+      createUploadWidget: (
+        options: Record<string, unknown>,
+        callback: (
+          error: Error | null,
+          result: CloudinaryUploadWidgetResult | null
+        ) => void
+      ) => CloudinaryUploadWidget;
+    };
+  }
+}
 
 export function VideoUploadArea() {
   const queryClient = useQueryClient();
-  const [file, setFile] = useState<File | null>(null);
+  const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
 
-  const uploadMutation = useMutation({
-    mutationFn: async (videoFile: File) => {
-      const formData = new FormData();
-      formData.append('file', videoFile);
+  const { data: folders = [] } = useQuery<Folder[]>({
+    queryKey: ['folders'],
+    queryFn: () => fetch('/api/folders').then((res) => res.json()),
+  });
 
-      const res = await fetch('/api/cloudinary/upload', {
+  const saveVideoMutation = useMutation({
+    mutationFn: (videoData: {
+      title: string;
+      cloudinaryPublicId: string;
+      cloudinaryUrl: string;
+      subtitledUrl: string | null;
+      srtUrl: string | null;
+      vttUrl: string | null;
+      folderId: string;
+    }) => {
+      console.log('[SAVE VIDEO] Payload →', videoData);
+      return fetch('/api/videos', {
         method: 'POST',
-        body: formData,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(videoData),
+      }).then((res) => {
+        if (!res.ok) {
+          return res.json().then((err) => {
+            throw new Error(err.error || 'Failed to save video.');
+          });
+        }
+        return res.json() as Promise<Video>;
       });
-      if (!res.ok) {
-        // Grab the error message from the response if possible
-        const errorData = await res
-          .json()
-          .catch(() => ({ message: 'Upload failed' }));
-        throw new Error(
-          errorData.message || 'Upload failed. Please try again.'
-        );
-      }
-      return res.json();
     },
-    onSuccess: () => {
-      setFile(null);
-      queryClient.invalidateQueries({ queryKey: ['videos'] });
-      // NEW: Call toast functions directly like this
-      toast.success('Success!', {
-        description: 'Your video has been uploaded and is being processed.',
+    onSuccess: (newVideo) => {
+      toast.success('Video saved!', {
+        description: 'Transcription is processing...',
       });
+      queryClient.invalidateQueries({ queryKey: ['folders'] });
+      console.log('[SAVE VIDEO] Successfully created DB record:', newVideo);
     },
     onError: (error: Error) => {
-      // NEW: Use toast.error for a better visual cue
-      toast.error('Upload Error', {
-        description: error.message,
-      });
+      toast.error('Failed to save video', { description: error.message });
     },
   });
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const selectedFile = e.target.files?.[0];
-    if (selectedFile) {
-      setFile(selectedFile);
+  const openUploadWidget = () => {
+    if (!selectedFolder) {
+      toast.warning('Please select a folder first.');
+      return;
     }
-  };
+    const folder = folders.find((f) => f.id === selectedFolder)!;
+    const folderName = folder.name.replace(/\s+/g, '_').toLowerCase();
 
-  const handleUpload = () => {
-    if (file) {
-      uploadMutation.mutate(file);
-    }
+    const widget = window.cloudinary.createUploadWidget(
+      {
+        cloudName: process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME,
+        uploadPreset: 'ai_video_final',
+        folder: `ai-videos/${folderName}`,
+        sources: ['local', 'camera'],
+        multiple: false,
+      },
+      (error, result) => {
+        if (error) {
+          toast.error('Upload Error', { description: error.message });
+          return;
+        }
+        if (result && result.event === 'success') {
+          const info = result.info;
+          const subtitledUrl = info.eager?.[0]?.secure_url || null;
+
+          // --- THE FIX: Construct the correct URLs based on your findings ---
+          const videoUrl = info.secure_url;
+
+          // Replace '/video/upload/' with '/raw/upload/'
+          const baseUrl = videoUrl.replace('/video/upload/', '/raw/upload/');
+
+          // Change the file extension
+          const srtUrl = baseUrl.replace(/\.mp4$/, '.srt');
+          const vttUrl = baseUrl.replace(/\.mp4$/, '.vtt');
+          // -----------------------------------------------------------------
+
+          console.log('[UPLOAD COMPLETE]');
+          console.log(` • SRT URL (Constructed): ${srtUrl}`);
+          console.log(` • VTT URL (Constructed): ${vttUrl}`);
+
+          saveVideoMutation.mutate({
+            title: info.original_filename || 'Untitled Video',
+            cloudinaryPublicId: info.public_id,
+            cloudinaryUrl: videoUrl,
+            subtitledUrl,
+            srtUrl,
+            vttUrl,
+            folderId: selectedFolder,
+          });
+        }
+      }
+    );
+    widget.open();
   };
 
   return (
@@ -71,42 +152,24 @@ export function VideoUploadArea() {
         </CardTitle>
       </CardHeader>
       <CardContent className='space-y-4'>
-        {!file ? (
-          <label
-            htmlFor='file-upload'
-            className='relative flex flex-col items-center justify-center w-full h-32 border-2 border-dashed rounded-lg cursor-pointer hover:bg-muted transition-colors'
-          >
-            <UploadCloud className='w-8 h-8 text-muted-foreground' />
-            <p className='mt-2 text-sm text-muted-foreground'>
-              Drag & drop or click to upload
-            </p>
-            <Input
-              id='file-upload'
-              type='file'
-              className='sr-only'
-              accept='video/*'
-              onChange={handleFileChange}
-              disabled={uploadMutation.isPending}
-            />
-          </label>
-        ) : (
-          <div className='flex items-center justify-between p-4 border rounded-lg'>
-            <div className='flex items-center gap-3'>
-              <FileVideo className='h-6 w-6 text-muted-foreground' />
-              <span className='font-medium text-sm'>{file.name}</span>
-            </div>
-            <Button size='icon' variant='ghost' onClick={() => setFile(null)}>
-              <X className='h-4 w-4' />
-            </Button>
-          </div>
-        )}
-
+        <Select onValueChange={setSelectedFolder} value={selectedFolder || ''}>
+          <SelectTrigger>
+            <SelectValue placeholder='1. Select a folder' />
+          </SelectTrigger>
+          <SelectContent>
+            {folders.map((folder) => (
+              <SelectItem key={folder.id} value={folder.id}>
+                {folder.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
         <Button
-          onClick={handleUpload}
-          disabled={!file || uploadMutation.isPending}
+          onClick={openUploadWidget}
+          disabled={!selectedFolder || saveVideoMutation.isPending}
           className='w-full'
         >
-          {uploadMutation.isPending ? 'Uploading...' : 'Upload and Process'}
+          2. Open Upload Widget
         </Button>
       </CardContent>
     </Card>

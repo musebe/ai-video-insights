@@ -2,9 +2,10 @@
 
 import './globals.css';
 import { ReactNode } from 'react';
+import Script from 'next/script'; // <-- ADD THIS IMPORT
 import { Header } from '@/components/layout/Header';
 import { Sidebar } from '@/components/layout/Sidebar';
-import { SettingsPanel } from '@/components/layout/SettingsPanel'; // <-- Using the new panel
+import { SettingsPanel } from '@/components/layout/SettingsPanel';
 import { Providers } from '@/components/Providers';
 import {
   ResizableHandle,
@@ -51,6 +52,12 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             <SettingsPanel />
           </ResizablePanelGroup>
         </Providers>
+
+        {/* ADD THE CLOUDINARY WIDGET SCRIPT HERE */}
+        <Script
+          src='https://upload-widget.cloudinary.com/global/all.js'
+          strategy='lazyOnload'
+        />
       </body>
     </html>
   );

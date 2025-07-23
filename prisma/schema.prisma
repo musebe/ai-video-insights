@@ -1,0 +1,48 @@
+// prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Defines the Folder model. Each folder will have a unique ID, a name,
+// and timestamps. It also knows about the list of videos it contains.
+model Folder {
+  id        String   @id @default(cuid())
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  videos    Video[] // This defines the one-to-many relationship
+}
+
+// Defines the Video model. It stores video details and links back
+// to a specific folder.
+model Video {
+  id                 String   @id @default(cuid())
+  title              String
+  cloudinaryPublicId String   @unique
+  cloudinaryUrl      String
+  
+  transcript         String?  @db.Text
+  summary            String?  @db.Text
+  status             String   @default("PROCESSING")
+
+  srtUrl             String?
+  vttUrl             String?
+  subtitledUrl       String? 
+
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  // This is the foreign key that links a video to a folder
+  folderId           String
+  folder             Folder   @relation(fields: [folderId], references: [id], onDelete: Cascade)
+
+  // This improves database performance when querying for videos within a folder
+  @@index([folderId])
+}
