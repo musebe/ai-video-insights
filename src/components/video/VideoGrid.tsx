@@ -5,7 +5,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import Link from 'next/link'; // <-- MUST use Link for client-side navigation
+import Link from 'next/link'; 
 
 interface Video {
   id: string;

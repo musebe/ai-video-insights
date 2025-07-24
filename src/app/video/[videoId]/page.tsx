@@ -24,7 +24,7 @@ export default async function VideoPage({
   }
 
   return (
-    <div className='grid grid-cols-1 lg:grid-cols-5 gap-8 h-full'>
+    <div className='grid grid-cols-1 lg:grid-cols-5 gap-8 h-full p-4 md:p-8'>
       {/* Left Column: Video Player */}
       <div className='lg:col-span-3'>
         <VideoPlayer video={video} />

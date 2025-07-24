@@ -1,6 +1,8 @@
+// components/insights/InsightsPanel.tsx
+
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useChat } from 'ai/react';
 import { useMutation } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
@@ -8,7 +10,6 @@ import {
   Card,
   CardContent,
   CardDescription,
-  CardFooter,
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
@@ -17,10 +18,7 @@ import {
   Bot,
   Send,
   Sparkles,
-  User,
-  Loader2,
   Share2,
-  Copy,
   RefreshCw,
   Download,
   Save,
@@ -62,19 +60,19 @@ export function InsightsPanel({ video }: InsightsPanelProps) {
   const [cues, setCues] = useState<TranscriptCue[]>([]);
   const [isEditing, setIsEditing] = useState(false);
 
+  // Parse transcript data
   useEffect(() => {
-    if (video.transcript && video.transcript.startsWith('[')) {
-      try {
-        const parsedCues = JSON.parse(video.transcript);
-        if (Array.isArray(parsedCues)) {
-          setCues(parsedCues);
-        }
-      } catch {
-        // THE FIX: Removed the unused '(e)' variable
-        console.error('Failed to parse transcript JSON');
-        // Fallback for non-JSON transcripts (like old summaries)
+    if (!video.transcript) return;
+
+    try {
+      if (video.transcript.startsWith('[')) {
+        setCues(JSON.parse(video.transcript));
+      } else {
         setCues([{ timestamp: 'Content', text: video.transcript }]);
       }
+    } catch (error) {
+      console.error('Failed to parse transcript', error);
+      setCues([{ timestamp: 'Content', text: video.transcript }]);
     }
   }, [video.transcript]);
 
@@ -98,7 +96,7 @@ export function InsightsPanel({ video }: InsightsPanelProps) {
       : [],
   });
 
-  const generateSummaryMutation = useMutation({
+  const generateSummary = useMutation({
     mutationFn: (videoId: string) =>
       fetch('/api/openai/summarize', {
         method: 'POST',
@@ -106,15 +104,15 @@ export function InsightsPanel({ video }: InsightsPanelProps) {
         headers: { 'Content-Type': 'application/json' },
       }),
     onSuccess: async (res) => {
-      if (!res.ok) throw new Error('Failed to generate summary.');
+      if (!res.ok) throw new Error('Failed to generate summary');
       toast.success('Summary generated!');
       router.refresh();
     },
     onError: (error: Error) =>
-      toast.error('Summary Generation Failed', { description: error.message }),
+      toast.error('Summary failed', { description: error.message }),
   });
 
-  const generatePostMutation = useMutation({
+  const generatePost = useMutation({
     mutationFn: ({
       videoId,
       platform,
@@ -134,32 +132,28 @@ export function InsightsPanel({ video }: InsightsPanelProps) {
       toast.success('Social post generated!');
     },
     onError: (error: Error) =>
-      toast.error('Post Generation Failed', { description: error.message }),
+      toast.error('Post failed', { description: error.message }),
   });
 
-  const checkStatusMutation = useMutation({
+  const checkStatus = useMutation({
     mutationFn: (publicId: string) =>
       fetch(`/api/cloudinary/status/${publicId.replace(/\//g, '_')}`),
     onSuccess: async (res) => {
-      if (!res.ok) {
-        const d = await res.json();
-        throw new Error(d.error);
-      }
+      if (!res.ok) throw new Error(await res.text());
+
       const data = await res.json();
       if (data.status === 'complete') {
-        toast.success('Transcript found!');
+        toast.success('Transcript ready!');
         router.refresh();
       } else {
-        toast.info('Still processing...', {
-          description: `Status: ${data.status}`,
-        });
+        toast.info('Processing...', { description: `Status: ${data.status}` });
       }
     },
     onError: (error: Error) =>
-      toast.error('Error Checking Status', { description: error.message }),
+      toast.error('Status check failed', { description: error.message }),
   });
 
-  const loadTranscriptMutation = useMutation({
+  const loadTranscript = useMutation({
     mutationFn: (videoId: string) =>
       fetch('/api/transcript', {
         method: 'POST',
@@ -167,15 +161,15 @@ export function InsightsPanel({ video }: InsightsPanelProps) {
         headers: { 'Content-Type': 'application/json' },
       }),
     onSuccess: async (res) => {
-      if (!res.ok) throw new Error('Failed to load transcript.');
-      toast.success('Editable transcript loaded!');
+      if (!res.ok) throw new Error('Failed to load transcript');
+      toast.success('Transcript loaded!');
       router.refresh();
     },
     onError: (error: Error) =>
-      toast.error('Failed to load transcript', { description: error.message }),
+      toast.error('Load failed', { description: error.message }),
   });
 
-  const saveTranscriptMutation = useMutation({
+  const saveTranscript = useMutation({
     mutationFn: (data: { videoId: string; cues: TranscriptCue[] }) =>
       fetch('/api/transcript/update', {
         method: 'POST',
@@ -183,27 +177,28 @@ export function InsightsPanel({ video }: InsightsPanelProps) {
         headers: { 'Content-Type': 'application/json' },
       }),
     onSuccess: async (res) => {
-      if (!res.ok) throw new Error('Failed to save transcript.');
-      toast.success('Transcript saved successfully!');
+      if (!res.ok) throw new Error('Failed to save transcript');
+      toast.success('Transcript saved!');
       setIsEditing(false);
     },
     onError: (error: Error) =>
-      toast.error('Failed to save transcript', { description: error.message }),
+      toast.error('Save failed', { description: error.message }),
   });
 
-  const handleCueTextChange = (index: number, newText: string) => {
-    const updatedCues = [...cues];
-    updatedCues[index].text = newText;
-    setCues(updatedCues);
-    if (!isEditing) setIsEditing(true);
-  };
+  const handleCueChange = useCallback((index: number, text: string) => {
+    setCues((prev) => {
+      const updated = [...prev];
+      updated[index] = { ...updated[index], text };
+      return updated;
+    });
+    setIsEditing(true);
+  }, []);
 
-  const handleCopyToClipboard = () => {
-    if (generatedPost) {
-      navigator.clipboard.writeText(generatedPost);
-      toast.success('Copied to clipboard!');
-    }
-  };
+  const copyToClipboard = useCallback(() => {
+    if (!generatedPost) return;
+    navigator.clipboard.writeText(generatedPost);
+    toast.success('Copied to clipboard!');
+  }, [generatedPost]);
 
   return (
     <>
@@ -213,16 +208,16 @@ export function InsightsPanel({ video }: InsightsPanelProps) {
             <div className='flex items-start justify-between'>
               <div>
                 <CardTitle className='flex items-center gap-2'>
-                  <Bot /> AI Tools
+                  <Bot className='h-5 w-5' /> AI Tools
                 </CardTitle>
                 <CardDescription>
-                  Chat, generate content, or edit the transcript.
+                  Chat, generate content, or edit the transcript
                 </CardDescription>
               </div>
               <TabsList>
                 <TabsTrigger value='chat'>Chat & Insights</TabsTrigger>
                 <TabsTrigger value='editor' disabled={!video.vttUrl}>
-                  Editor
+                  Transcript Editor
                 </TabsTrigger>
               </TabsList>
             </div>
@@ -230,21 +225,19 @@ export function InsightsPanel({ video }: InsightsPanelProps) {
 
           <TabsContent
             value='chat'
-            className='flex-1 flex flex-col gap-4 overflow-y-hidden'
+            className='flex-1 flex flex-col gap-4 overflow-hidden'
           >
-            <CardContent className='flex-1 flex flex-col gap-4 overflow-y-hidden'>
-              <div className='flex items-center gap-2 flex-wrap'>
+            <CardContent className='flex-1 flex flex-col gap-4 overflow-hidden'>
+              <div className='flex flex-wrap gap-2'>
                 {video.status === 'PROCESSING' && (
                   <Button
                     size='sm'
                     variant='outline'
-                    onClick={() =>
-                      checkStatusMutation.mutate(video.cloudinaryPublicId)
-                    }
-                    disabled={checkStatusMutation.isPending}
+                    onClick={() => checkStatus.mutate(video.cloudinaryPublicId)}
+                    disabled={checkStatus.isPending}
                   >
-                    {checkStatusMutation.isPending ? (
-                      <Loader2 className='mr-2 h-4 w-4 animate-spin' />
+                    {checkStatus.isPending ? (
+                      <RefreshCw className='mr-2 h-4 w-4 animate-spin' />
                     ) : (
                       <RefreshCw className='mr-2 h-4 w-4' />
                     )}
@@ -254,11 +247,11 @@ export function InsightsPanel({ video }: InsightsPanelProps) {
                 {video.transcript && !video.summary && (
                   <Button
                     size='sm'
-                    onClick={() => generateSummaryMutation.mutate(video.id)}
-                    disabled={generateSummaryMutation.isPending}
+                    onClick={() => generateSummary.mutate(video.id)}
+                    disabled={generateSummary.isPending}
                   >
-                    {generateSummaryMutation.isPending ? (
-                      <Loader2 className='mr-2 h-4 w-4 animate-spin' />
+                    {generateSummary.isPending ? (
+                      <Sparkles className='mr-2 h-4 w-4 animate-spin' />
                     ) : (
                       <Sparkles className='mr-2 h-4 w-4' />
                     )}
@@ -271,10 +264,10 @@ export function InsightsPanel({ video }: InsightsPanelProps) {
                       <Button
                         size='sm'
                         variant='outline'
-                        disabled={generatePostMutation.isPending}
+                        disabled={generatePost.isPending}
                       >
-                        {generatePostMutation.isPending ? (
-                          <Loader2 className='mr-2 h-4 w-4 animate-spin' />
+                        {generatePost.isPending ? (
+                          <Share2 className='mr-2 h-4 w-4 animate-spin' />
                         ) : (
                           <Share2 className='mr-2 h-4 w-4' />
                         )}
@@ -284,7 +277,7 @@ export function InsightsPanel({ video }: InsightsPanelProps) {
                     <DropdownMenuContent>
                       <DropdownMenuItem
                         onClick={() =>
-                          generatePostMutation.mutate({
+                          generatePost.mutate({
                             videoId: video.id,
                             platform: 'linkedin',
                           })
@@ -294,7 +287,7 @@ export function InsightsPanel({ video }: InsightsPanelProps) {
                       </DropdownMenuItem>
                       <DropdownMenuItem
                         onClick={() =>
-                          generatePostMutation.mutate({
+                          generatePost.mutate({
                             videoId: video.id,
                             platform: 'twitter',
                           })
@@ -304,7 +297,7 @@ export function InsightsPanel({ video }: InsightsPanelProps) {
                       </DropdownMenuItem>
                       <DropdownMenuItem
                         onClick={() =>
-                          generatePostMutation.mutate({
+                          generatePost.mutate({
                             videoId: video.id,
                             platform: 'facebook',
                           })
@@ -316,141 +309,133 @@ export function InsightsPanel({ video }: InsightsPanelProps) {
                   </DropdownMenu>
                 )}
               </div>
-              <ScrollArea className='flex-1 pr-4 -mr-4'>
+
+              <ScrollArea className='flex-1 rounded-lg border p-4'>
                 <div className='space-y-4'>
                   {messages.map((m) => (
                     <div
                       key={m.id}
                       className={cn(
                         'flex items-start gap-3',
-                        m.role === 'user' ? 'justify-end' : ''
+                        m.role === 'user' && 'flex-row-reverse'
                       )}
                     >
-                      <>
-                        {m.role === 'assistant' && (
-                          <Bot className='h-6 w-6 text-primary flex-shrink-0' />
-                        )}
-                      </>
                       <div
                         className={cn(
-                          'p-3 rounded-lg max-w-sm',
+                          'p-3 rounded-lg max-w-[80%]',
                           m.role === 'user'
                             ? 'bg-primary text-primary-foreground'
                             : 'bg-muted'
                         )}
                       >
-                        <div className='prose dark:prose-invert text-sm'>
+                        <div className='prose prose-sm dark:prose-invert max-w-none'>
                           <ReactMarkdown>{m.content}</ReactMarkdown>
                         </div>
                       </div>
-                      <>
-                        {m.role === 'user' && (
-                          <User className='h-6 w-6 text-muted-foreground flex-shrink-0' />
-                        )}
-                      </>
                     </div>
                   ))}
                   {isChatLoading && (
                     <div className='flex items-center gap-3'>
-                      <Bot className='h-6 w-6 text-primary animate-pulse' />
                       <div className='p-3 rounded-lg bg-muted'>
-                        <Loader2 className='h-4 w-4 animate-spin' />
+                        <RefreshCw className='h-4 w-4 animate-spin' />
                       </div>
                     </div>
                   )}
                 </div>
               </ScrollArea>
             </CardContent>
-            <CardFooter>
-              <form
-                onSubmit={handleSubmit}
-                className='w-full flex items-center gap-2'
-              >
+
+            <CardContent>
+              <form onSubmit={handleSubmit} className='flex gap-2'>
                 <Textarea
                   value={input}
                   onChange={handleInputChange}
                   placeholder={
                     video.transcript
-                      ? 'Ask about the Project Nova launch...'
+                      ? 'Ask about the video...'
                       : 'Waiting for transcript...'
                   }
-                  className='flex-grow'
+                  className='flex-1'
                   disabled={isChatLoading || !video.transcript}
+                  rows={1}
                 />
                 <Button
                   type='submit'
                   size='icon'
                   disabled={isChatLoading || !video.transcript}
+                  className='self-end'
                 >
-                  <Send size={18} />
+                  <Send size={16} />
                 </Button>
               </form>
-            </CardFooter>
+            </CardContent>
           </TabsContent>
 
           <TabsContent
             value='editor'
-            className='flex-1 flex flex-col gap-4 overflow-y-hidden'
+            className='flex-1 flex flex-col overflow-hidden'
           >
             <CardContent className='flex-1 flex flex-col gap-4'>
               {cues.length > 0 ? (
-                <>
-                  <ScrollArea className='flex-1 pr-4 -mr-4'>
-                    <div className='space-y-4'>
-                      {cues.map((cue, index) => (
-                        <div
-                          key={index}
-                          className='grid grid-cols-[auto_1fr] items-start gap-4'
-                        >
-                          <div className='text-xs text-muted-foreground font-mono bg-muted p-2 rounded-md text-center pt-4'>
-                            {cue.timestamp.replace('-->', '\n')}
+                <div className='flex-1 flex flex-col gap-4 min-h-0'>
+                  <div className='flex-1 min-h-0 border rounded-lg'>
+                    <ScrollArea className='h-full p-4'>
+                      <div className='space-y-4 pr-4'>
+                        {cues.map((cue, index) => (
+                          <div
+                            key={index}
+                            className='grid grid-cols-[auto_1fr] gap-3'
+                          >
+                            <div className='text-xs text-muted-foreground font-mono bg-muted p-2 rounded text-center'>
+                              {cue.timestamp}
+                            </div>
+                            <Textarea
+                              value={cue.text}
+                              onChange={(e) =>
+                                handleCueChange(index, e.target.value)
+                              }
+                              className='text-sm min-h-[60px]'
+                            />
                           </div>
-                          <Textarea
-                            value={cue.text}
-                            onChange={(e) =>
-                              handleCueTextChange(index, e.target.value)
-                            }
-                            className='text-sm w-full'
-                            rows={3}
-                          />
-                        </div>
-                      ))}
-                    </div>
-                  </ScrollArea>
+                        ))}
+                      </div>
+                    </ScrollArea>
+                  </div>
+
                   {isEditing && (
-                    <Button
-                      onClick={() =>
-                        saveTranscriptMutation.mutate({
-                          videoId: video.id,
-                          cues,
-                        })
-                      }
-                      disabled={saveTranscriptMutation.isPending}
-                    >
-                      {saveTranscriptMutation.isPending ? (
-                        <Loader2 className='mr-2 h-4 w-4 animate-spin' />
-                      ) : (
-                        <Save className='mr-2 h-4 w-4' />
-                      )}
-                      Save Changes
-                    </Button>
+                    <div className='pt-2 border-t'>
+                      <Button
+                        onClick={() =>
+                          saveTranscript.mutate({ videoId: video.id, cues })
+                        }
+                        disabled={saveTranscript.isPending}
+                        className='w-full'
+                      >
+                        {saveTranscript.isPending ? (
+                          <RefreshCw className='mr-2 h-4 w-4 animate-spin' />
+                        ) : (
+                          <Save className='mr-2 h-4 w-4' />
+                        )}
+                        Save Changes
+                      </Button>
+                    </div>
                   )}
-                </>
+                </div>
               ) : (
-                <div className='flex-1 flex flex-col items-center justify-center'>
-                  <p className='text-sm text-muted-foreground mb-4'>
-                    Load the VTT file to start editing.
+                <div className='flex-1 flex flex-col items-center justify-center gap-4'>
+                  <p className='text-sm text-muted-foreground text-center'>
+                    Load the VTT file to start editing the transcript
                   </p>
                   <Button
-                    onClick={() => loadTranscriptMutation.mutate(video.id)}
-                    disabled={loadTranscriptMutation.isPending}
+                    onClick={() => loadTranscript.mutate(video.id)}
+                    disabled={loadTranscript.isPending}
                   >
-                    {loadTranscriptMutation.isPending ? (
-                      <Loader2 className='mr-2 h-4 w-4 animate-spin' />
+                    {loadTranscript.isPending ? (
+                      <RefreshCw className='mr-2 h-4 w-4 animate-spin' />
                     ) : (
                       <Download className='mr-2 h-4 w-4' />
                     )}
-                    Load Editable Transcript
+                    Load Transcript
                   </Button>
                 </div>
               )}
@@ -460,18 +445,17 @@ export function InsightsPanel({ video }: InsightsPanelProps) {
       </Card>
 
       <Dialog open={isPostDialogOpen} onOpenChange={setIsPostDialogOpen}>
-        <DialogContent className='sm:max-w-md'>
+        <DialogContent className='max-w-2xl'>
           <DialogHeader>
             <DialogTitle>Generated Social Post</DialogTitle>
             <DialogDescription>
-              Review and copy the generated post below.
+              Copy the post content to share on social media
             </DialogDescription>
           </DialogHeader>
-          <div className='prose dark:prose-invert text-sm whitespace-pre-wrap bg-muted p-4 rounded-md'>
-            {generatedPost}
+          <div className='prose prose-sm dark:prose-invert bg-muted/50 p-4 rounded-md max-h-[50vh] overflow-auto'>
+            <pre className='whitespace-pre-wrap'>{generatedPost}</pre>
           </div>
-          <Button onClick={handleCopyToClipboard} className='mt-4 w-full'>
-            <Copy className='mr-2 h-4 w-4' />
+          <Button onClick={copyToClipboard} className='mt-2'>
             Copy to Clipboard
           </Button>
         </DialogContent>

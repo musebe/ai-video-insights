@@ -1,4 +1,11 @@
 {
   "postman.settings.dotenv-detection-notification-visibility": false,
-  "cSpell.words": ["cuid", "streamifier", "uncategorized", "vaul", "WEBVTT"]
+  "cSpell.words": [
+    "cuid",
+    "streamifier",
+    "Supabase",
+    "uncategorized",
+    "vaul",
+    "WEBVTT"
+  ]
 }

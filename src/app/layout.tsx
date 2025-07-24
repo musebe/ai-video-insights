@@ -2,7 +2,7 @@
 
 import './globals.css';
 import { ReactNode } from 'react';
-import Script from 'next/script'; // <-- ADD THIS IMPORT
+import Script from 'next/script';
 import { Header } from '@/components/layout/Header';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { SettingsPanel } from '@/components/layout/SettingsPanel';
@@ -42,7 +42,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             <ResizablePanel defaultSize={80}>
               <div className='flex flex-col h-full'>
                 <Header />
-                <main className='flex-1 overflow-y-auto bg-muted/40 p-4 md:p-8'>
+                <main className='flex-1 overflow-hidden bg-muted/40'>
                   {children}
                 </main>
               </div>
