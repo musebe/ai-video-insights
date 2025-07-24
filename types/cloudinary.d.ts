@@ -1,42 +1,40 @@
-// types/cloudinary.d.ts
+// Unified Cloudinary type definitions
 
-// --- Type definitions for the Upload Widget ---
-interface CloudinaryUploadWidgetInfo {
+// --- Upload Widget Types ---
+export interface CloudinaryUploadWidgetInfo {
     public_id: string;
     secure_url: string;
     original_filename?: string;
-    // FIX: Add the optional 'eager' property
     eager?: Array<{ secure_url: string }>;
+    version: number;
 }
-interface CloudinaryUploadWidgetResult {
+
+export interface CloudinaryUploadWidgetResult {
     event: 'success';
     info: CloudinaryUploadWidgetInfo;
 }
-interface CloudinaryUploadWidget {
+
+export interface CloudinaryUploadWidget {
     open: () => void;
 }
 
-// --- Type definitions for the Video Player ---
-
-// FIX: Define the specific shape of the player's source object
-interface CloudinaryTextTrack {
-    src: string;
-    label: string;
-    language: string;
-    kind: 'subtitles' | 'captions';
-    default?: boolean;
-}
-interface CloudinaryPlayerSource {
-    publicId: string;
-    info?: {
-        textTracks?: CloudinaryTextTrack[];
-    };
-}
-interface CloudinaryVideoPlayer {
-    source: (source: CloudinaryPlayerSource) => void;
+// --- Video Player Types ---
+interface CloudinaryTextTrackOptions {
+    backgroundColor?: string;
+    color?: string;
+    fontFamily?: string;
 }
 
-// --- The final, unified global definition ---
+interface CloudinaryTextTracks {
+    setDefaults: (options: CloudinaryTextTrackOptions) => void;
+}
+
+export interface CloudinaryVideoPlayer {
+    source: (source: unknown) => void;
+    textTracks: () => CloudinaryTextTracks;
+}
+
+// --- Global Window Extension ---
 declare global {
     interface Window {
         cloudinary: {
@@ -45,12 +43,9 @@ declare global {
                 callback: (error: Error | null, result: CloudinaryUploadWidgetResult | null) => void
             ) => CloudinaryUploadWidget;
             videoPlayer: (
-                ref: HTMLVideoElement,
+                element: HTMLVideoElement,
                 options: Record<string, unknown>
             ) => CloudinaryVideoPlayer;
         };
     }
-}
-
-// This empty export is needed to make the file a module
-export { };
+  }

@@ -1,13 +1,15 @@
-// src/components/video/VideoUploadArea.tsx
-
 'use client';
 
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { UploadCloud } from 'lucide-react';
 import { toast } from 'sonner';
+import type { Folder, Video } from '@prisma/client';
+
+
+// UI Components
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   Select,
   SelectContent,
@@ -15,55 +17,23 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import type { Folder, Video } from '@prisma/client';
-
-// Cloudinary widget typings
-interface CloudinaryUploadWidgetInfo {
-  public_id: string;
-  secure_url: string;
-  version: number;
-  eager?: Array<{ secure_url: string }>;
-  original_filename?: string;
-}
-interface CloudinaryUploadWidgetResult {
-  event: 'success';
-  info: CloudinaryUploadWidgetInfo;
-}
-interface CloudinaryUploadWidget {
-  open: () => void;
-}
-
-// Merge with Cloudinary’s own Window.cloudinary type
-declare global {
-  interface Window {
-    cloudinary: {
-      createUploadWidget: (
-        options: Record<string, unknown>,
-        callback: (
-          error: Error | null,
-          result: CloudinaryUploadWidgetResult | null
-        ) => void
-      ) => CloudinaryUploadWidget;
-      // Avoid `any` by using `unknown`
-      videoPlayer: (
-        element: HTMLVideoElement,
-        options: Record<string, unknown>
-      ) => unknown;
-    };
-  }
-}
 
 export function VideoUploadArea() {
   const queryClient = useQueryClient();
   const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
 
+  // Fixed: Removed onError from useQuery options
   const { data: folders = [] } = useQuery<Folder[]>({
     queryKey: ['folders'],
-    queryFn: () => fetch('/api/folders').then((res) => res.json()),
+    queryFn: async () => {
+      const res = await fetch('/api/folders');
+      if (!res.ok) throw new Error('Failed to fetch folders');
+      return res.json();
+    },
   });
 
   const saveVideoMutation = useMutation({
-    mutationFn: (videoData: {
+    mutationFn: async (videoData: {
       title: string;
       cloudinaryPublicId: string;
       cloudinaryUrl: string;
@@ -72,26 +42,24 @@ export function VideoUploadArea() {
       vttUrl: string | null;
       folderId: string;
     }) => {
-      console.log('[SAVE VIDEO] Payload →', videoData);
-      return fetch('/api/videos', {
+      const res = await fetch('/api/videos', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(videoData),
-      }).then((res) => {
-        if (!res.ok) {
-          return res.json().then((err) => {
-            throw new Error(err.error || 'Failed to save video.');
-          });
-        }
-        return res.json() as Promise<Video>;
       });
+
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.error || 'Failed to save video');
+      }
+      return res.json() as Promise<Video>;
     },
-    onSuccess: (newVideo) => {
+    // Fixed: Removed unused newVideo parameter
+    onSuccess: () => {
       toast.success('Video saved!', {
         description: 'Transcription is processing...',
       });
       queryClient.invalidateQueries({ queryKey: ['folders'] });
-      console.log('[SAVE VIDEO] Successfully created DB record:', newVideo);
     },
     onError: (error: Error) => {
       toast.error('Failed to save video', { description: error.message });
@@ -103,7 +71,14 @@ export function VideoUploadArea() {
       toast.warning('Please select a folder first.');
       return;
     }
-    const folder = folders.find((f) => f.id === selectedFolder)!;
+
+    // Fixed: Added explicit type to folder parameter
+    const folder = folders.find((f: Folder) => f.id === selectedFolder);
+    if (!folder) {
+      toast.error('Selected folder not found');
+      return;
+    }
+
     const folderName = folder.name.replace(/\s+/g, '_').toLowerCase();
 
     const widget = window.cloudinary.createUploadWidget(
@@ -121,20 +96,17 @@ export function VideoUploadArea() {
           toast.error('Upload Error', { description: error.message });
           return;
         }
-        if (result && result.event === 'success') {
+
+        if (result?.event === 'success') {
           const info = result.info;
           const subtitledUrl = info.eager?.[0]?.secure_url || null;
 
-          // --- Construct raw transcript URLs based on the returned secure_url ---
+          // Generate transcript URLs
           const videoUrl = info.secure_url;
           const baseUrl = videoUrl.replace('/video/upload/', '/raw/upload/');
-          const srtUrl = baseUrl.replace(/\.mp4$/, '.srt');
-          const vttUrl = baseUrl.replace(/\.mp4$/, '.vtt');
-          // -----------------------------------------------------------------------
-
-          console.log('[UPLOAD COMPLETE]');
-          console.log(` • SRT URL: ${srtUrl}`);
-          console.log(` • VTT URL: ${vttUrl}`);
+          const extension = videoUrl.split('.').pop() || 'mp4';
+          const srtUrl = baseUrl.replace(`.${extension}`, '.srt');
+          const vttUrl = baseUrl.replace(`.${extension}`, '.vtt');
 
           saveVideoMutation.mutate({
             title: info.original_filename || 'Untitled Video',
@@ -148,6 +120,7 @@ export function VideoUploadArea() {
         }
       }
     );
+
     widget.open();
   };
 
@@ -155,28 +128,34 @@ export function VideoUploadArea() {
     <Card>
       <CardHeader>
         <CardTitle className='flex items-center gap-2'>
-          <UploadCloud /> Upload a New Video
+          <UploadCloud size={20} /> Upload a New Video
         </CardTitle>
       </CardHeader>
       <CardContent className='space-y-4'>
-        <Select onValueChange={setSelectedFolder} value={selectedFolder || ''}>
+        <Select
+          onValueChange={setSelectedFolder}
+          value={selectedFolder || ''}
+          disabled={saveVideoMutation.isPending}
+        >
           <SelectTrigger>
-            <SelectValue placeholder='1. Select a folder' />
+            <SelectValue placeholder='Select a folder' />
           </SelectTrigger>
           <SelectContent>
-            {folders.map((folder) => (
+            {/* Fixed: Added explicit type to folder parameter */}
+            {folders.map((folder: Folder) => (
               <SelectItem key={folder.id} value={folder.id}>
                 {folder.name}
               </SelectItem>
             ))}
           </SelectContent>
         </Select>
+
         <Button
           onClick={openUploadWidget}
-          disabled={!selectedFolder || saveVideoMutation.status === 'pending'}
+          disabled={!selectedFolder || saveVideoMutation.isPending}
           className='w-full'
         >
-          2. Open Upload Widget
+          {saveVideoMutation.isPending ? 'Processing...' : 'Open Upload Widget'}
         </Button>
       </CardContent>
     </Card>
